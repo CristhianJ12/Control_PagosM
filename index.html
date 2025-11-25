@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Control de Pagos Mensuales</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .calendar-grid {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 0.5rem;
+    }
+    .day-cell { min-height: 90px; padding: 0.5rem; border-radius: 0.5rem; transition: transform 0.15s; cursor: pointer; }
+    .day-cell:hover { transform: scale(1.02); }
+    .day-cell.cursor-not-allowed { cursor: not-allowed; }
+    .day-cell.cursor-not-allowed:hover { transform: none; }
+    .day-number { font-weight: bold; }
+    .day-status { font-size: 0.85rem; }
+    .day-payment { margin-top: 0.25rem; font-size: 0.75rem; color: #0f5132; }
+
+    .status-worked { background-color: #fff3cd; }
+    .status-paid { background-color: #d1e7dd; }
+    .status-partially-paid { background-color: #ffe8a8; }
+    .status-non-working { background-color: #f8f9fa; }
+
+    .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.45); display:flex; align-items:center; justify-content:center; z-index:50; }
+    .modal-content { background: white; padding: 1.25rem; border-radius: 0.75rem; width: 90%; max-width: 480px; }
+    .hidden { display: none !important; }
+
+    #loader-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.25); display: flex; align-items: center; justify-content: center; z-index: 9999; opacity: 0; pointer-events: none; transition: opacity 0.2s ease; }
+    #loader-overlay.visible { opacity: 1; pointer-events: auto; }
+    .loader { width: 56px; height: 56px; border-radius: 999px; border: 6px solid rgba(255,255,255,0.9); border-top-color: rgba(99,102,241,1); animation: spin 1s linear infinite; box-shadow: 0 4px 18px rgba(0,0,0,0.15); }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .toast { padding: .6rem .9rem; border-radius: .5rem; color: #fff; margin-bottom: .5rem; box-shadow: 0 4px 12px rgba(0,0,0,.08); opacity:1; transition: opacity 0.3s ease; }
+  </style>
+</head>
+<body class="bg-gray-100">
+<div class="max-w-6xl mx-auto p-4 sm:p-6">
+  <h1 class="text-center text-2xl sm:text-3xl font-bold mb-6">Control de Pagos Mensuales</h1>
+
+  <!-- Header Controls -->
+  <div class="flex flex-col sm:flex-row items-center justify-between mb-4 gap-2 sm:gap-0">
+    <button id="prev-month-btn" class="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300 w-full sm:w-auto transition-opacity">← Mes Anterior</button>
+    <h2 id="current-month-year" class="text-lg sm:text-xl font-semibold"></h2>
+    <button id="next-month-btn" class="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300 w-full sm:w-auto transition-opacity">Mes Siguiente →</button>
+  </div>
+
+  <!-- Stats Section -->
+  <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
+    <div class="bg-white p-3 rounded-lg border border-gray-200">
+      <p class="text-sm font-medium text-gray-500">Días Trabajados / Pagados</p>
+      <p id="days-summary" class="text-xl font-semibold">0 / 0</p>
+    </div>
+    <div class="bg-white p-3 rounded-lg border border-gray-200">
+      <p class="text-sm font-medium text-gray-500">Tarifa del Día</p>
+      <input id="daily-rate" type="number" class="w-full mt-1 p-2 border rounded" placeholder="S/ 50.00" value="50.00" step="0.01" min="0" />
+      <p id="daily-rate-warning" class="text-xs text-red-600 hidden mt-1">⚠️ La tarifa diaria debe ser mayor a 0.</p>
+    </div>
+    <div class="bg-white p-3 rounded-lg border border-gray-200">
+      <p class="text-sm font-medium text-gray-500">Deuda Mes Anterior</p>
+      <p id="prior-month-debt-display" class="text-xl font-semibold text-red-600">S/ 0.00</p>
+    </div>
+    <div class="bg-white p-3 rounded-lg border border-gray-200">
+      <p class="text-sm font-medium text-gray-500">Balance Total</p>
+      <p id="total-balance" class="text-xl font-semibold text-red-600">S/ 0.00</p>
+    </div>
+    <div class="bg-white p-3 rounded-lg border border-indigo-200">
+      <p class="text-sm font-medium text-gray-500">Meses con Deuda (últ. 12m)</p>
+      <p id="months-debt-count" class="text-xl font-semibold text-red-600">0</p>
+    </div>
+    <div class="bg-white p-3 rounded-lg border border-indigo-200">
+      <p class="text-sm font-medium text-gray-500">Crédito Global</p>
+      <p id="global-credit-display" class="text-xl font-semibold text-green-600">S/ 0.00</p>
+    </div>
+  </div>
+
+  <!-- Calendar -->
+  <div class="bg-white p-4 rounded-lg shadow overflow-x-auto">
+    <div class="calendar-grid mb-4 font-semibold text-center min-w-[600px]">
+      <div>Dom</div><div>Lun</div><div>Mar</div><div>Mié</div><div>Jue</div><div>Vie</div><div>Sáb</div>
+    </div>
+    <div id="calendar-body" class="calendar-grid min-w-[600px]"></div>
+  </div>
+
+  <div class="flex flex-col sm:flex-row justify-between items-center mt-4 gap-2 sm:gap-0">
+    <button id="reset-btn" class="px-4 py-2 bg-red-100 text-red-700 rounded w-full sm:w-auto hover:bg-red-200 transition-colors">RESET TOTAL</button>
+  </div>
+</div>
+
+<!-- Loader -->
+<div id="loader-overlay">
+  <div class="loader" role="status" aria-label="Cargando"></div>
+</div>
+
+<!-- Notification container -->
+<div id="notification-container" class="fixed bottom-4 right-4 z-50"></div>
+
+<!-- Modals -->
+<div id="work-confirmation-modal" class="modal-overlay hidden">
+  <div class="modal-content">
+    <h3 class="text-lg font-semibold mb-3">Confirmar día trabajado</h3>
+    <p>¿Marcar como trabajado el día <strong><span id="work-modal-day"></span></strong>?</p>
+    <div class="mt-4 flex justify-end gap-2">
+      <button id="work-modal-cancel-btn" class="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300 transition-colors">Cancelar</button>
+      <button id="work-modal-confirm-btn" class="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 transition-colors">Confirmar</button>
+    </div>
+  </div>
+</div>
+
+<div id="payment-modal" class="modal-overlay hidden">
+  <div class="modal-content">
+    <h3 class="text-lg font-semibold mb-3">Registrar pago</h3>
+    <p class="mb-2">Registrar pago para el día <strong><span id="modal-day"></span></strong></p>
+    <input id="payment-amount" type="number" step="0.01" min="0" class="w-full mt-2 p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Monto a pagar (S/)" />
+    <div class="mt-4 flex justify-end gap-2">
+      <button id="modal-cancel-btn" class="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300 transition-colors">Cancelar</button>
+      <button id="modal-save-btn" class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<div id="fully-paid-modal" class="modal-overlay hidden">
+  <div class="modal-content text-center">
+    <div class="text-6xl mb-4">🎉</div>
+    <h3 class="text-xl font-bold mb-2">¡Excelente!</h3>
+    <p>Todos los días del mes están pagados.</p>
+    <div class="mt-4 flex justify-center">
+      <button id="paid-modal-close-btn" class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<div id="debt-block-modal" class="modal-overlay hidden">
+  <div class="modal-content">
+    <h3 class="text-lg font-semibold mb-3 text-red-600">❌ No se puede crear día</h3>
+    <p class="modal-msg text-gray-700" id="debt-block-msg"></p>
+    <div class="mt-4 flex justify-end">
+      <button onclick="document.getElementById('debt-block-modal').classList.add('hidden');" class="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300 transition-colors">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>

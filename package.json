@@ -1,0 +1,19 @@
+{
+  "devDependencies": {
+    "tailwindcss": "^4.1.17"
+  },
+  "name": "pagos",
+  "version": "1.0.0",
+  "description": "",
+  "main": "main.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "firebase-admin": "^13.6.0"
+  }
+}
