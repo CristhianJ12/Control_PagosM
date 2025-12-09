@@ -4,7 +4,7 @@ import { getFirestore, doc, getDoc, setDoc, updateDoc, deleteField } from "https
 
 /* ---------- CONFIG ---------- */
 const firebaseConfig = {
-  apiKey: "AIzaSyC_LSGCtpONfY4Qf9nSzN6rrsbtVJeWcfs",
+  apiKey: "APi",
   authDomain: "pago-mensual.firebaseapp.com",
   projectId: "pago-mensual",
   storageBucket: "pago-mensual.firebasestorage.app",
